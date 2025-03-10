@@ -1,8 +1,8 @@
 /data/
-!/src/data/
-venv
+.venv
 mlruns/
 /models/
-!/src/models/
-/src/app/
-/src/config/
+__pycache__/
+#/src/models/
+#/src/app/
+#/src/config/
