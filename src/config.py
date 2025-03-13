@@ -42,6 +42,6 @@ HEALTH_CHECK_INTERVAL = 10  # seconds
 HEALTH_CHECK_DELAY = 5  # seconds
 
 # Data pipeline settings
-DEFAULT_YEAR = "2023"
-DEFAULT_MONTH = "01"
+DEFAULT_YEAR = os.getenv("DATA_YEAR", "2023")
+DEFAULT_MONTH = os.getenv("DATA_MONTH", "01")
 CONSOLIDATED_FILE_NAME = "consolidated_nyc_taxi_data.parquet"

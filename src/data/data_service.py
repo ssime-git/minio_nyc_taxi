@@ -366,7 +366,7 @@ class DataService:
             os.remove(processed_file_path)
             
             # Return list of processed files
-            return [processed_file_name]
+            return [processed_file_name, train_object, test_object]
         except Exception as e:
             logger.error(f"Error in build_features: {str(e)}")
             raise Exception(f"Error building features: {str(e)}")
@@ -1140,8 +1140,8 @@ class DataServiceHandler(BaseHTTPRequestHandler):
                     'status': 'success',
                     'message': f'Data processed successfully for {year}-{month}',
                     'processed_files': processed_files,
-                    'train_data': train_object,
-                    'test_data': test_object
+                    'train_data': processed_files[1],
+                    'test_data': processed_files[2]
                 }
                 
                 self.wfile.write(json.dumps(response).encode())

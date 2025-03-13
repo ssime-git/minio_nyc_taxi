@@ -7,11 +7,13 @@ A comprehensive MLOps pipeline for processing, analyzing, and modeling NYC Taxi 
 This project implements a complete MLOps pipeline for NYC Taxi data, featuring:
 
 - Centralized object storage with MinIO
-- Automated data ingestion and processing
+- Automated data ingestion and processing for any month/year
 - Feature engineering and dataset versioning
 - Model training and experiment tracking with MLflow
 - Pipeline orchestration and monitoring
 - GDPR compliance and data anonymization
+- FastAPI REST interfaces for all services
+- Environment variable configuration for dynamic data processing
 
 ## Architecture
 
@@ -65,7 +67,7 @@ The system is built with a microservices architecture, with each component runni
    - REST API for file operations
 
 2. **Data Service**
-   - Data ingestion from external sources
+   - Data ingestion from external sources for any specified year/month
    - Data transformation and feature engineering
    - Dataset versioning and quality validation
    - GDPR compliance features
@@ -74,6 +76,7 @@ The system is built with a microservices architecture, with each component runni
    - Model training with versioned datasets
    - Read-only data access
    - MLflow integration for experiment tracking
+   - Support for training from specific data files
 
 4. **MLflow Tracking Server**
    - Experiment tracking and metrics
@@ -85,6 +88,7 @@ The system is built with a microservices architecture, with each component runni
    - Health checks and service monitoring
    - Error handling and retry mechanisms
    - Status tracking and reporting
+   - Support for custom year/month parameters in pipeline runs
 
 6. **Monitoring System**
    - Pipeline stage tracking
@@ -104,11 +108,12 @@ Key configuration areas include:
 - Shared volume paths
 - Health check settings
 - Data directories and bucket names
+- Default year and month for data processing (can be overridden via API)
 
 ## Data Flow
 
 1. **Data Ingestion**
-   - Raw NYC Taxi data is downloaded from the official source
+   - Raw NYC Taxi data is downloaded from the official source for the specified year/month
    - Files are stored in MinIO raw data bucket
    - Data quality checks are performed
 
@@ -119,7 +124,7 @@ Key configuration areas include:
 
 3. **Train/Test Split**
    - Data is split into training and testing sets
-   - Splits are stored in separate MinIO buckets
+   - Splits are stored in separate MinIO buckets with appropriate naming conventions
 
 4. **Model Training**
    - Models are trained using the training dataset
@@ -166,6 +171,12 @@ Key configuration areas include:
    MINIO_ROOT_USER=minioadmin
    MINIO_ROOT_PASSWORD=minioadmin
    MINIO_BUCKET=nyc-taxi-data
+   MINIO_PORT=9000
+   MINIO_CONSOLE_PORT=9001
+   
+   # Data Pipeline Configuration - Change these to set default month/year
+   DATA_YEAR=2023
+   DATA_MONTH=01
    ```
 
 3. **Build and start all services**:
@@ -193,112 +204,119 @@ Key configuration areas include:
    docker logs orchestrator -f
    ```
 
-6. **Access service UIs**:
-   - MinIO Console: http://localhost:9001 (login with MINIO_ROOT_USER/MINIO_ROOT_PASSWORD)
-   - MLflow UI: http://localhost:5002
+## Using the Pipeline
 
-### Troubleshooting Common Issues
+### Running the Pipeline
 
-1. **Service health check failures**:
-   - Check if all services are running: `docker compose ps`
-   - Inspect service logs: `docker logs <service_name>`
-   - Ensure correct hostnames in `config.py` (use container names with underscores, not hyphens)
+You can trigger the pipeline in two ways:
 
-2. **MinIO bucket creation issues**:
-   - Verify MinIO credentials in `.env` file
-   - Check MinIO logs: `docker logs minio_server`
-   - Manually create buckets using MinIO console if needed
+1. **Using default year/month** (from environment variables):
+   ```bash
+   curl -X POST http://localhost:8080/run-pipeline
+   ```
 
-3. **Training service errors**:
-   - Ensure DataAuditor initialization is correct in `train_model.py`
-   - Verify training service URL in `config.py` matches container name in Docker Compose
-   - Check training service logs: `docker logs training_service`
+2. **Specifying custom year/month**:
+   ```bash
+   curl -X POST -H "Content-Type: application/json" \
+     http://localhost:8080/run-pipeline \
+     -d '{"year": "2023", "month": "04"}'
+   ```
 
-4. **Data download issues**:
-   - Verify internet connectivity for downloading NYC Taxi data
-   - Check data service logs: `docker logs data_service`
-   - Manually download and place data files in MinIO if needed
+### Checking Pipeline Status
 
-## Service Endpoints
+```bash
+curl http://localhost:8080/pipeline-status
+```
 
-- **MinIO**: http://localhost:9000 (API), http://localhost:9001 (Console)
-- **Data Service**: http://localhost:8000
-- **Storage Manager**: http://localhost:8001
-- **Training Service**: http://localhost:8002
-- **MLflow**: http://localhost:5002
-- **Monitoring**: http://localhost:8003
+### Accessing MinIO Console
 
-## Development
+Open your browser and navigate to:
+```
+http://localhost:9001
+```
+Login with the credentials specified in your `.env` file.
 
-### Project Structure
+### Accessing MLflow UI
+
+Open your browser and navigate to:
+```
+http://localhost:5000
+```
+
+## Potential Improvements
+
+1. **Enhanced Orchestration**:
+   - Implement DAG-based workflow management
+   - Add support for parallel processing of multiple months
+   - Implement more sophisticated retry mechanisms
+
+2. **Data Quality Monitoring**:
+   - Add data drift detection
+   - Implement automated data quality alerts
+   - Create data quality dashboards
+
+3. **Model Monitoring**:
+   - Add model performance monitoring over time
+   - Implement automated retraining triggers based on performance degradation
+   - Add model explainability features
+
+4. **Security Enhancements**:
+   - Implement OAuth2 authentication for all services
+   - Add role-based access control for different user types
+   - Enhance audit logging for security events
+
+5. **Scalability Improvements**:
+   - Implement Kubernetes deployment for better scaling
+   - Add support for distributed training
+   - Optimize storage usage for large datasets
+
+6. **User Interface**:
+   - Develop a web-based dashboard for pipeline monitoring
+   - Add visualization tools for data and model metrics
+   - Create a user-friendly interface for triggering pipeline runs
+
+7. **CI/CD Integration**:
+   - Add automated testing for all components
+   - Implement CI/CD pipelines for continuous deployment
+   - Add code quality checks and security scanning
+
+## Project Structure
 
 ```
 minio_nyc_taxi/
-├── src/
-│   ├── config.py                  # Global configuration
-│   ├── data/                      # Data service
-│   │   └── data_service.py        # Data ingestion and processing
-│   ├── storage_manager/           # Storage manager service
-│   │   ├── manager.py             # MinIO operations
-│   │   └── server.py              # REST API server
-│   ├── models/                    # Training service
-│   │   └── train_model.py         # Model training
-│   ├── orchestrator/              # Pipeline orchestrator
-│   │   └── main.py                # Main orchestration logic
-│   └── monitoring/                # Monitoring system
-│       └── audit.py               # Audit logging
-├── tests/                         # Test suite
-├── docker-compose.yml             # Service definitions
-├── Dockerfile                     # Container build instructions
-├── requirements/                  # Service-specific requirements
-│   ├── data-service-requirements.txt
-│   ├── monitoring-requirements.txt
-│   ├── orchestrator-requirements.txt
-│   ├── storage-manager-requirements.txt
-│   └── training-service-requirements.txt
-└── setup.py                       # Package setup
+├── docker-compose.yml          # Docker Compose configuration
+├── .env                        # Environment variables
+├── README.md                   # Project documentation
+├── src/                        # Source code
+│   ├── config.py               # Global configuration
+│   ├── data/                   # Data service
+│   │   ├── data_service_fastapi.py  # FastAPI implementation
+│   │   └── data_service.py     # Data ingestion and processing
+│   ├── storage_manager/        # Storage manager service
+│   │   ├── manager.py          # MinIO operations
+│   │   └── server.py           # REST API server
+│   ├── models/                 # Training service
+│   │   ├── train_model_fastapi.py  # FastAPI implementation
+│   │   └── train_model.py      # Model training logic
+│   ├── orchestrator/           # Orchestrator service
+│   │   ├── main.py             # Orchestration logic
+│   │   └── orchestrator_api.py # FastAPI implementation
+│   └── monitoring/             # Monitoring service
+│       ├── audit.py            # Audit logging
+│       └── monitoring.py       # Monitoring logic
+└── data/                       # Mounted data volume
+    ├── raw/                    # Raw data
+    ├── processed/              # Processed data
+    ├── train/                  # Training data
+    └── test/                   # Test data
 ```
 
-### Adding New Features
+## License
 
-When adding new features:
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-1. Update the global configuration in `src/config.py` if needed
-2. Implement the feature in the appropriate service
-3. Update tests to cover the new functionality
-4. Document the changes in this README
+## Acknowledgments
 
-## Current Status and Next Steps
-
-The pipeline is currently operational with the following features:
-
-- Centralized configuration for all services
-- Data ingestion and processing for NYC Taxi data
-- Feature engineering and train/test splitting
-- Basic model training with MLflow tracking
-- Pipeline orchestration with health checks
-- Monitoring and audit logging
-
-Next steps for development:
-
-1. Enhance model evaluation metrics
-2. Implement automated retraining triggers
-3. Add more sophisticated feature engineering
-4. Expand GDPR compliance features
-5. Implement CI/CD pipeline for automated testing and deployment
-
-## Troubleshooting
-
-Common issues and solutions:
-
-- **Service health check failures**: Ensure all services are running with `docker-compose ps`
-- **MinIO connection issues**: Verify MinIO credentials in the configuration
-- **Data pipeline failures**: Check data service logs for detailed error messages
-- **Storage errors**: Ensure shared volumes are properly mounted
-
-## Next prompt : delagating audit and monitoring to monitoring service
-
-@train_model.py#L71-72this shouldn't be delegated to storage manager instead ? same for this @train_model.py#L106-111 @train_model.py#L106-111 ?
-
-* Par ailleurs, il faut que chaque service ait son propre utilisation du storage manager.
-* move the sample to the config
+- NYC Taxi & Limousine Commission for providing the dataset
+- MinIO team for the object storage solution
+- MLflow team for the experiment tracking framework

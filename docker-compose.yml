@@ -28,12 +28,14 @@ services:
     container_name: storage_manager
     restart: always
     ports:
-      - "8001:8001"  # Storage Manager API
+      - "${STORAGE_MANAGER_PORT:-8001}:8001"  # Storage Manager API
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
+      DATA_YEAR: ${DATA_YEAR:-2023}
+      DATA_MONTH: ${DATA_MONTH:-01}
     volumes:
       - ./src:/app/src
       - data_volume:/app/data
@@ -73,7 +75,7 @@ services:
     container_name: data_service
     restart: always
     ports:
-      - "8000:8000"  # Data ingestion and Feature engineering API
+      - "${DATA_SERVICE_PORT:-8000}:8000"  # Data ingestion and Feature engineering API
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -81,6 +83,8 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET}
       RAW_DATA_DIR: /app/data/raw
       PROCESSED_DATA_DIR: /app/data/processed
+      DATA_YEAR: ${DATA_YEAR:-2023}
+      DATA_MONTH: ${DATA_MONTH:-01}
     volumes:
       - ./src:/app/src
       - data_volume:/app/data
@@ -121,14 +125,15 @@ services:
     container_name: training_service
     restart: always
     ports:
-      - "8002:8002"  # Model training API
+      - "${TRAINING_SERVICE_PORT:-8002}:8002"  # Training Service API
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
       MLFLOW_TRACKING_URI: http://mlflow:8080
-      PROCESSED_DATA_DIR: /app/data/processed
+      DATA_YEAR: ${DATA_YEAR:-2023}
+      DATA_MONTH: ${DATA_MONTH:-01}
     volumes:
       - ./src:/app/src
       - data_volume:/app/data
@@ -138,9 +143,7 @@ services:
         condition: service_healthy
       mlflow:
         condition: service_started
-      storage-manager:
-        condition: service_started
-      monitoring:
+      data-service:
         condition: service_started
     networks:
       - mlops_network
@@ -152,12 +155,16 @@ services:
       target: orchestrator
     container_name: orchestrator
     restart: always
+    ports:
+      - "${ORCHESTRATOR_PORT:-8080}:8080"  # Orchestrator API
     environment:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET}
       MLFLOW_TRACKING_URI: http://mlflow:8080
+      DATA_YEAR: ${DATA_YEAR:-2023}
+      DATA_MONTH: ${DATA_MONTH:-01}
     volumes:
       - ./src:/app/src
       - data_volume:/app/data

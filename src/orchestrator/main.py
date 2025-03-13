@@ -22,7 +22,10 @@ from config import (
     MLFLOW_TRACKING_URI,
     HEALTH_CHECK_RETRIES,
     HEALTH_CHECK_INTERVAL,
-    CONSOLIDATED_FILE_NAME
+    CONSOLIDATED_FILE_NAME,
+    DEFAULT_YEAR,
+    DEFAULT_MONTH,
+    STORAGE_MANAGER_URL
 )
 
 from monitoring.audit import DataAuditor
@@ -107,8 +110,16 @@ class MLOpsOrchestrator:
         return self.check_service_health("Data Service", f"{DATA_SERVICE_ENDPOINT}/health", max_retries, retry_interval)
     
     def check_feature_service_health(self, max_retries=HEALTH_CHECK_RETRIES, retry_interval=HEALTH_CHECK_INTERVAL):
-        """Check if the feature engineering service is healthy."""
+        """Check if the feature service is healthy"""
         return self.check_service_health("Feature Service", f"{FEATURE_SERVICE_ENDPOINT}/health", max_retries, retry_interval)
+    
+    def check_storage_manager_health(self, max_retries=HEALTH_CHECK_RETRIES, retry_interval=HEALTH_CHECK_INTERVAL):
+        """Check if the storage manager service is healthy"""
+        return self.check_service_health("Storage Manager", f"{STORAGE_MANAGER_URL}/health", max_retries, retry_interval)
+    
+    def check_monitoring_service_health(self, max_retries=HEALTH_CHECK_RETRIES, retry_interval=HEALTH_CHECK_INTERVAL):
+        """Check if the monitoring service is healthy"""
+        return self.check_service_health("Monitoring Service", f"{MONITORING_SERVICE_ENDPOINT}/health", max_retries, retry_interval)
     
     def check_training_service_health(self, max_retries=HEALTH_CHECK_RETRIES, retry_interval=HEALTH_CHECK_INTERVAL):
         """Check if the training service is healthy."""
@@ -142,16 +153,23 @@ class MLOpsOrchestrator:
             logger.error(f"Failed to initialize services: {str(e)}")
             return False
 
-    def run_data_pipeline(self):
-        """
-        Run the data ingestion and feature engineering pipeline.
+    def run_data_pipeline(self, year=None, month=None):
+        """Run the data ingestion and feature engineering pipeline.
         
+        Args:
+            year (str, optional): Year to process data for. Defaults to value from config.
+            month (str, optional): Month to process data for. Defaults to value from config.
+            
         Returns:
             tuple: (success, train_file, test_file) where success is a boolean indicating
                   if the pipeline completed successfully, and train_file and test_file
                   are the names of the generated training and test files.
         """
         try:
+            # Use provided values or defaults
+            year = year or DEFAULT_YEAR
+            month = month or DEFAULT_MONTH
+            
             # Start data pipeline
             self.auditor.log_data_access(
                 "pipeline_start",
@@ -160,9 +178,19 @@ class MLOpsOrchestrator:
                 {"component": "data_ingestion"}
             )
             
+            # Prepare request data with year and month
+            request_data = {
+                "year": year,
+                "month": month
+            }
+            
             # Run data ingestion service via HTTP request
-            logger.info("Delegating data ingestion to data-service")
-            response = requests.post(f"{DATA_SERVICE_ENDPOINT}/process-data", timeout=300)
+            logger.info(f"Delegating data ingestion to data-service for {year}-{month}")
+            response = requests.post(
+                f"{DATA_SERVICE_ENDPOINT}/process-data", 
+                json=request_data,
+                timeout=300
+            )
             if response.status_code != 200:
                 raise Exception(f"Data ingestion failed with status code {response.status_code}: {response.text}")
             
@@ -178,8 +206,12 @@ class MLOpsOrchestrator:
                 # Continue anyway since this is just a warning
             
             # Run feature engineering via HTTP request
-            logger.info("Delegating feature engineering to feature-service")
-            response = requests.post(f"{FEATURE_SERVICE_ENDPOINT}/process-data", timeout=300)
+            logger.info(f"Delegating feature engineering to feature-service for {year}-{month}")
+            response = requests.post(
+                f"{FEATURE_SERVICE_ENDPOINT}/process-data", 
+                json=request_data,  # Pass the same request_data with year and month
+                timeout=300
+            )
             if response.status_code != 200:
                 raise Exception(f"Feature engineering failed with status code {response.status_code}: {response.text}")
             
@@ -187,8 +219,8 @@ class MLOpsOrchestrator:
             logger.info(f"Feature engineering completed with response: {feature_response}")
             
             # Extract train and test file names from the response
-            train_file = feature_response.get('train_data')
-            test_file = feature_response.get('test_data')
+            train_file = feature_response.get('train_data') or data_response.get('train_data')
+            test_file = feature_response.get('test_data') or data_response.get('test_data')
             
             if not train_file or not test_file:
                 logger.warning("Train or test file names not found in feature engineering response")
@@ -253,9 +285,9 @@ class MLOpsOrchestrator:
             )
             
             # Send request to training service
-            logger.info(f"Sending training request to {TRAINING_SERVICE_URL}/train-model")
+            logger.info(f"Sending training request to {TRAINING_SERVICE_URL}/train")
             response = requests.post(
-                f"{TRAINING_SERVICE_URL}/train-model",
+                f"{TRAINING_SERVICE_URL}/train",
                 json=request_data,
                 timeout=1800  # 30 minutes timeout for large datasets
             )
@@ -392,7 +424,9 @@ class MLOpsOrchestrator:
                 
                 # Run data pipeline
                 logger.info("Delegating data ingestion to data-service")
-                data_success, train_file, test_file = self.run_data_pipeline()
+                year = os.environ.get("DATA_YEAR", DEFAULT_YEAR)
+                month = os.environ.get("DATA_MONTH", DEFAULT_MONTH)
+                data_success, train_file, test_file = self.run_data_pipeline(year=year, month=month)
                 
                 if not data_success:
                     logger.error("Data pipeline failed. Aborting pipeline.")
@@ -492,16 +526,18 @@ class MLOpsOrchestrator:
             return False
 
     def _check_service_health(self):
-        """Check if all services are healthy."""
-        services = [
+        """Check the health of all services"""
+        health_checks = [
             ("MinIO", self.check_minio_health()),
             ("MLflow", self.check_mlflow_health()),
             ("Data Service", self.check_data_service_health()),
             ("Feature Service", self.check_feature_service_health()),
+            ("Storage Manager", self.check_storage_manager_health()),
+            ("Monitoring Service", self.check_monitoring_service_health()),
             ("Training Service", self.check_training_service_health())
         ]
         
-        for service, healthy in services:
+        for service, healthy in health_checks:
             if not healthy:
                 logger.error(f"{service} is not healthy")
                 return False

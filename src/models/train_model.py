@@ -378,6 +378,52 @@ class ModelTrainer:
             
             logger.info(f"Model logged to MLflow with run_id: {run.info.run_id}")
             return run.info.run_id
+            
+    def train_model_from_files(self, train_file=None, test_file=None, sample_size=100000, experiment_name="nyc-taxi-fare-prediction", model_params=None):
+        """
+        Complete training pipeline from file names to model training.
+        
+        Args:
+            train_file: Optional name of the training file to load
+            test_file: Optional name of the test file to load
+            sample_size: Optional integer to limit the dataset size for faster processing
+            experiment_name: Name of the MLflow experiment to use
+            model_params: Optional dictionary of model parameters
+            
+        Returns:
+            Dictionary with model metrics
+        """
+        try:
+            logger.info(f"Starting training pipeline with files: train={train_file}, test={test_file}")
+            
+            # Set MLflow experiment
+            mlflow.set_experiment(experiment_name)
+            
+            # Load and preprocess data
+            X_train, X_test, y_train, y_test = self.load_data(
+                train_file=train_file,
+                test_file=test_file,
+                sample_size=sample_size
+            )
+            
+            if X_train is None or X_test is None or y_train is None or y_test is None:
+                raise Exception("Failed to load training data")
+                
+            # Train model
+            metrics = self.train_model(X_train, X_test, y_train, y_test)
+            
+            logger.info(f"Training completed successfully with metrics: {metrics}")
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Error in training pipeline: {str(e)}")
+            self.auditor.log_data_access(
+                "model_training_error",
+                "model_training",
+                "training_service",
+                {"error": str(e)}
+            )
+            raise
 
 # Global model trainer instance for API access
 model_trainer = None

@@ -2,3 +2,5 @@ minio==7.2.0
 python-dotenv==1.0.0
 requests==2.31.0
 mlflow==2.10.0
+fastapi==0.104.1
+uvicorn==0.23.2
